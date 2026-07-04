@@ -32,8 +32,6 @@ groups (prime, young, veteran)?
 
 - Two primary sources were merged for this analysis. One consisted of player salaries from the 2024-2025 season and the other included player statistics from the 2023-2024 season. These data came from ESPN and NBA. 
 
-[NBA Player Salaries - National Basketball Association - ESPN. (2024). ESPN.com. ]https:
-//www.espn.com/nba/salaries/_/year/2025/seasontype/3
+[NBA Player Salaries] https://www.espn.com/nba/salaries/_/year/2025/seasontype/3
 
-[Players Advanced | Stats | NBA.com. (2025). NBA. ]https://www.nba.com/stats/players/
-advanced?sort=W&dir=-1&Season=2023-24&SeasonType=Regular+Season
+[Players Advanced Stats] https://www.nba.com/stats/players/advanced?sort=W&dir=-1&Season=2023-24&SeasonType=Regular+Season
