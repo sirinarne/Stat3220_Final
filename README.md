@@ -1,4 +1,4 @@
-## NBA PLayer Salary Analysis 
+## NBA Player Salary Analysis 
 
 ## Overview 
 
