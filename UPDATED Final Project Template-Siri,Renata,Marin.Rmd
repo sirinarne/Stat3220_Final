@@ -1,0 +1,481 @@
+---
+title: "An Analysis of NBA Player Salary Variation Across Different Player Statistics" 
+author: "The Significant Others - Siri, Marin, ReNata"
+fontsize: 12pt
+geometry: margin=1in
+urlcolor: black
+output: pdf_document
+header-includes:
+- \usepackage{setspace}
+- \onehalfspacing
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, highlight=FALSE, comment=NA, warnings=FALSE,message=FALSE)
+library(eeptools)
+library(corrplot)
+library(Hmisc)
+library(car)
+library(olsrr)
+library(MASS)
+```
+
+```{r, echo=FALSE, warning=FALSE,results=FALSE}
+## Use this chunk for reading in packages.
+## Use this chunk for reading in the data, combining the data, and any other major data cleaning that is not relevant to show.
+## Remove the ## before all code.
+```
+
+\newpage
+
+## Introduction
+
+The National Basketball Association has existed for around 80 years and consists of 30 teams across North America, featuring some of the best basketball players in the world. (NBA, 2019) Within the league, player salaries vary substantially and are influenced by both individual performance and league/team structure (Li, 2014) In addition, the league has a salary cap system in which there are limits on the total amount teams can spend on player salaries. (Sigler, 2018) This cap is determined by the NBA’s total income; however, it is also flexible as there are ways that teams can go over the limit. (NBA, 2025)
+
+It is important to understand what factors have the biggest impact on player salaries. Thus, in this analysis, we applied multiple linear regression to analyze how factors such as playing time, usage percentage, age group, and conference relate to salary variation among players. Furthermore, our research was guided by the following questions: 
+
+1)  Do NBA players in the Western Conference earn higher average salaries compared to players in the Eastern Conference?
+2)  Do NBA players who average more minutes of playing time per game in a season earn higher salaries than players who average fewer minutes per game?
+3)  Are NBA player salaries higher for the "old" age group compared to the other age groups (prime, young, veteran)?
+
+Each of these questions is motivated by different potential factors that impact salary variation. Specifically, conference affiliation can reflect differences such as competition. Playing time serves as a measure for player importance and contribution, which may contribute to higher or lower salaries. Additionally, age helps show the relationship between player performance versus experience, representing how salaries may be reflective of both athletic ability and veteran status. 
+
+Ultimately, this analysis focuses specifically on how performance related and demographic factors influence NBA player salaries, providing insight into what drives variation in salaries. 
+
+## Data Summary
+
+### Metadata Description
+
+Two primary sources were merged for this analysis. One consisted of player salaries from the 2024-2025 season and the other included player statistics from the 2023-2024 season. The source providing salary information for the players came from the official ESPN website, while the other dataset containing player statistics was taken from the advanced stats section of the official NBA website for 2023-2024 season. Neither source provided a specific publication date or a specified author. However, both are widely reputable platforms for sports related data. 
+
+We manipulated several of our variables to better support our analysis. Player salaries were converted into millions of dollars by dividing the original values by 1,000,000. Net Rating (NETRTG) was converted into a qualitative variable with three levels: low impact, average, and high impact. These groupings were based on 33rd and 66th percentile cutoffs. Age was manipulated to be a qualitative variable. Players were categorized as “Young” (18-23), “Prime”(24-28), “Veteran”(29-34), or “Old” (35+). Additionally, we created a conference variable, categorizing players as either “East” or “West” based on their team affiliation. 
+
+### EDA Summary
+
+```{r, echo=FALSE, warning=FALSE,results=FALSE}
+nba_data <- read.csv("https://raw.githubusercontent.com/sirinarne/Stat3220_Final/refs/heads/main/NBA_Data_Final1.csv", header = T)
+
+#Variable Recoding
+#Age --> Split into groups
+nba_data$AGE_GROUP <- cut(nba_data$AGE, breaks = c(18,24,29,35,Inf), labels = c("Young", "Prime", "Veteran", "Old"), right=FALSE)
+
+#Team --> Conference
+east_teams <- c("ATL","BOS","BKN","CHA","CHI","CLE","DET","IND","MIA","MIL","NYK","ORL","PHI","TOR","WAS")
+nba_data$CONFERENCE <- ifelse(nba_data$TEAM %in% east_teams, "East", "West")
+
+
+#Net Rating --> Tiers
+nba_data$NETRTG_TIER <- cut(nba_data$NETRTG,breaks = quantile(nba_data$NETRTG, probs = c(0, 0.33, 0.66, 1)),labels = c("Low Impact", "Average", "High Impact"),include.lowest = TRUE)
+
+
+nba_data$SALARY<-decomma(nba_data$SALARY)
+nba_data$SALARY<-nba_data$SALARY/1000000
+```
+
+```{r, echo=FALSE, warning=FALSE,results=FALSE}
+## Use this code chunk can be used to execute any functions or summaries 
+## that will not be included in your output such as correlations or 5 number summaries
+
+#five number summaries 
+tapply(nba_data$SALARY,nba_data$AGE_GROUP,summary)
+tapply(nba_data$SALARY,nba_data$CONFERENCE,summary)
+tapply(nba_data$SALARY,nba_data$NETRTG_TIER,summary)
+
+
+#correlations 
+#Correlations
+corPIE<-cor(nba_data$PIE,nba_data$SALARY) 
+corPCTTS<-cor(nba_data$TS_PCT,nba_data$SALARY) 
+corMIN<-cor(nba_data$MIN,nba_data$SALARY) 
+corOFFERTG<-cor(nba_data$OFFRTG,nba_data$SALARY) 
+corPCTUSG<-cor(nba_data$USG_PCT,nba_data$SALARY)  
+
+corPIE
+corPCTTS
+corMIN
+corOFFERTG
+corPCTUSG
+```
+
+Response Variable (Salary): The distribution of NBA player salaries for the season 2024-2025 ranges between 20 and 60 million dollars. The distribution indicates an overall downward trend(skewed right), with most players earning between 20 and 30 million. The distribution is also unimodal and there are no extreme outliers.
+
+Quantitative EDA Summary:
+
+The Player Impact Estimate seems to have the strongest correlation with a player’s salary the at 0.59. True shooting percentage, minutes played/game,and usage percentage have lower correlations with a player’s salary of 0.49, 0.45, and 0.47 respectively. The weakest correlation is between offensive rating and player salary at 0.36.
+
+Qualitative EDA Summary:
+
+There appears to be a relationship between age group and player salary because the mean value of y is different at each level. Players that belonged to the “Old” age group in the previous season earned the highest salary (44.67), while young and prime players have relatively similar average earnings (33.59 and 32.46), and veteran players earned an average of 36.57.
+
+There appears to be a relationship with conference and player salary because the mean value of y is different for each level. Players in the Eastern conference had an salary of 32.70, while the Western conference players had a higher average salary of 36.49.
+
+There appears to be a relationship between the net rating tier of a player and their salary because the mean value of y increases across levels. Low impact players have the lowest mean salary of 29.01, while average players have an average salary of 36.05, and high impact players have the highest average salary of 38.89.
+
+Interactions Summary:
+
+The interaction plot shows that there may be an interaction between net rating tier and age group on salary. The slopes do not appear to be parallel and there is some crossing over that occurs, indicating that the effect of net rating tier on salary may be dependent on age.
+
+The grouped scatterplot indicates a generally positive correlation between player impact estimate and salary. The effect of a player's impact estimate on salary does not seem to be dependent on age as the slopes are generally similar.
+
+There may be an interaction between the average playing time/game (MIN) and net rating tier. The slopes are fairly different as the high impact slope is the steepest, meaning that the highest impact players who play for a longer period of time per game earn the highest salaries. Because the lines are not parallel, it serves as evidence of a potential interaction.
+
+## Analysis and Results
+
+We fit an initial model with our quantitative variables of interest (MIN, OFFRTG, TS_PCT, USG_PCT, PIE) to assess multicollinearity. Looking at the correlation plot, there is a concern of moderately strong pairwise relationships with:
+
+-   USG_PCT & MIN (r=0.56)
+
+-   PIE & TS_PCT (r=0.51)
+
+-   USG_PCT & PIE (r=0.65)
+
+After checking the VIF values, there is no evidence of severe multicolinearity because none of the individual VIF values are greater than 10 and the average VIF is not greater than 3. Doing variable screening using stepwise regression with thresholds of pent=0.15 and prem=0.15 allowed us to narrow down our quantitative variables to MIN, TS_PCT, and USG_PCT. 
+
+From here, we proceeded to model fitting and fit our first model with the three quantitative variables that remained after variable screening. We did not have any quantitative x quantitative interactions to add at this time. The global F test resulted in a p value of 0.000000000000331, allowing us to reject the null hypothesis and conclude that the model with MIN, TS_PCT, and USG_PCT is adequate at predicting the salary of NBA players in millions of dollars. Then, the individual T tests revealed that all three of our variables (MIN, TS_PCT, and USG_PCT) were significant with p-values of 0.0112, 0.00000000145, and 0.0000765 respectively, meaning that these variables are significant predictors of NBA player salary. We then fit an updated model, adding in our qualitative variables of interest (AGE_GROUP, CONFERENCE, and NETRTG_TIER). We performed nested F tests on the age group and net rating tier variables, which resulted in p-values of 0.380 and 0.05 respectively, meaning that both of these variables had to be removed from our model. Additionally, we performed an individual T test on conference, which resulted in a p-value of 0.278, leading us to remove this variable from our model as well. From here, we intended to add in our quantitative x qualitative interaction between MIN and NETRTG_TIER , but did not proceed because one of the main effects (net rating tier) was dropped. Therefore, after this phase of model building, our model consisted of just our three quantitative variables - MIN, TS_PCT, and USG_PCT. 
+
+To check the model assumptions, we looked at residual plots, residual vs fitted plots, a histogram of the residuals, and a QQ plot. Generally speaking, our individual residual plots didn’t show any clear trends, but there was one noticeable outlier on the plot for MIN. Overall, we do not believe that our mean zero (lack of fit) assumption was violated. Our residual plots and residual vs fitted plots also did not show any clear fanning patterns. For the MIN variable, there was a slight fanning pattern, but after trying to correct it through transformations and not seeing much of a change, we decided to keep it as is. Again, generally speaking, we do not believe that the constant variance (homoscedasticity) was violated. However, the points on the QQ plot did not fall linearly, with many points above or below the line and the histogram was also slightly left skewed. Therefore, our normality assumption was violated, but with a large enough sample size, violations against normality can be considered robust for MLR. Additionally, we plan to use the box-cox method to address this violation. Finally, we do not believe that the statistics of one player depend on another player, so the independence violation is likely not violated. 
+
+We then conducted an analysis of influential observations using leverage, studentized residuals, Cook’s Distance, and deleted studentized residuals. Observations 10, 23, 42, and 50 were identified as high leverage points based on the threshold 2(3+1)/78 = 0.1026. Studentized residual analysis identified observations 7, 11, 18, 24, 37, 39, and 44 as potential outliers in the response variable due to values exceeding ±2. Cook’s Distance identified observations 11, 18, 24, 37, 39, and 42 as influential with the threshold 4/78. Deleted studentized residuals confirmed a similar set of influential observations (7, 11, 18, 24, 37, 39, and 44). However, there were no observations that simultaneously exceeded thresholds for leverage, Cook’s distance, studentized residuals, and standardized residuals. Therefore, from here, we went back into our data and looked at consistently repeated observations such as 7,11,18,24,37,39,and 44 to see if any of the values for the quantitative variables seemed extremely high or low, but did not see anything unusual as the values for the variables (MIN, TS_PCT, and USG_PCT) for these specific players fell within the range of the remaining players.
+
+After looking at dffits and dfbetas, it seemed like observation 37 was the most influential overall, with the largest DFFITS value (0.69). In addition, DFBetas show that removing observation 37 would affect the coefficients by a fairly large amount for MIN (0.543) and USG_PCT (-0.519). Observation 11 is also highly influential, with the second largest DFFITS value (-0.59), and DFBetas indicating a noticeable effect on TS_PCT (-0.406). Finally, to determine whether observations 11 and/or 37 should be removed, we refit three separate models to determine whether it would be best to remove both observations, only remove 37, only remove 11, or keep both of them. 
+
+Ultimately, we decided to not remove either of these observations. Although the model excluding both observations had the highest adjusted R squared value (0.5934), the improvement over the other models was relatively small and not enough to justify removing these data points. Specifically, the adjusted R squared values for the original model, the model excluding only observation 11, and the model excluding only observation 37 were 0.5424, 0.567, and 0.5661, respectively.
+
+However, because the normality assumption was initially violated, we applied a box-cox transformation to the response variable to see if the violation can be addressed. After performing the box-cox transformation, a log transformation transformation was applied to the response variable (SALARY), and the normality assumption improved significantly, with most of the residuals falling close to the line on the QQ-plot. Additionally, while the adjusted R-squared valued remained fairly similar at around 0.54, the residual standard error for the transformed model improved significantly. Prior to the box-cox transformation, the RSE was 6.381, while the residual standard error for the transformed model is 1.22 after taking the inverse to properly scale the units. Therefore, we decided to apply the box-cox transformation.
+
+Our final model includes the three quantitative variables - MIN, TS_PCT, and USG_PCT, keeps all observations, and transforms the response variable (SALARY). The global F-test shows that our model is adequate with a p-value of 0.0000000000002866. Each individual predictor is also significant as p-values for each of them are significantly below 0.05.
+
+```{r, echo=FALSE, warning=FALSE,include=FALSE}
+## This code chunk can be used to execute any functions or summaries that will not be included in your output
+library (MASS)
+nbamodfinal<-lm(SALARY~MIN+TS_PCT+USG_PCT,data=nba_data)
+bc <- boxcox(nbamodfinal)
+bc.power <- bc$x[which.max(bc$y)]
+bc.power
+#functions
+BCTransform <- function(y, lambda=0) {
+    if (lambda == 0L) { log(y) }
+    else { (y^lambda - 1) / lambda }
+}
+
+BCTransformInverse <- function(yt, lambda=0) {
+    if (lambda == 0L) { exp(yt) }
+    else { exp(log(1 + lambda * yt)/lambda) }
+}
+
+# testing
+yt <- BCTransform(nba_data$SALARY, bc.power)
+yo <- BCTransformInverse(yt, bc.power)
+unique(round(yo - nba_data$SALARY), 8)
+
+yt <- BCTransform(nba_data$SALARY, 0)
+yo <- BCTransformInverse(yt, 0)
+unique(round(yo - nba_data$SALARY), 8)
+
+#final model 
+nba_data$SALARY_bc <- BCTransform(nba_data$SALARY, bc.power)
+nbamodfinal_bc <- lm(SALARY_bc ~ MIN + TS_PCT + USG_PCT, data = nba_data)
+summary(nbamodfinal_bc)
+
+par(mfrow=c(2,2))
+residualPlots(nbamodfinal_bc,tests=F)
+plot(nbamodfinal_bc, which=c(1,2))
+```
+
+## Conclusions
+
+The prediction equation is given by: $\widehat{SALARY} = -0.6948 + 0.02222{MIN}+ 0.05210{TS\_PCT} + 0.02139{USG\_PCT}$
+
+For each additional minute of playing time, the expected log of salary increases by 0.022 million dollars, holding true shooting percentage and usage percentage constant. Additionally, for a one unit increase in the true shooting percentage, the expected log of salary increases by 0.052 million dollars, holding MIN and usage percentage constant. Finally, for a one unit increase in usage percentage, the expected log of salary increases by 0.021 million dollars, holding MIN and true shooting percentage constant.
+
+To exemplify the model being used for prediction, consider a player with 33.6 minutes of playing time/game, a true shooting percentage of 64.4, and a usage percentage of 38.7. According to the model, we are 95% confident that a NBA player who plays an average of 33.6 minutes, has a true shooting percentage of 64.4 and a usage percentage of 38.7 will have a salary between \$44.863 and \$106.265 million. Additionally, the player's estimated salary is 69.045 million. The actual observed salary for this player is \$51.416 million, meaning that the model overestimates by approximately \$17 million.
+
+If minutes played increase to 43.6 while holding all other variables constant, the predicted salary increases to approximately \$86.227 million, with a 95% prediction interval of \$55.89 million to \$133.03 million. This demonstrates that increased playing time could be correlated with higher predicted salary. However, with respect to our other proposed research questions, variables such as conference and age group were found to be insignificant through the model building process and were removed from the model. As a result, conclusions regarding their relationship with salary cannot be determined in this analysis.
+
+There are also several limitations to our analysis process that are important to consider. First, many variables were dropped throughout the model building process that could potentially be important in determining a player's salary such as age, conference, and player impact estimate. This limits the model's ability to fully explain the variation in NBA salaries. Additionally, NBA salaries are also dependent on external factors such as the salary cap system and contract structure, which are not accounted for in this model. Moreover, while the box-cox transformation improved the normality assumption, it also reduces the interpretability of the model.
+
+In the future, it would be beneficial to add additional variables such as points per game and contract year, as well as increasing the sample size and consider using data across multiple seasons. These improvements could potentially contribute to enhancing our model.
+
+```{r, echo=FALSE, warning=FALSE,results=FALSE}
+newnba<-data.frame(MIN=33.6,TS_PCT=64.4,USG_PCT = 38.7)
+predict(nbamodfinal_bc,newnba, level=.95, interval="prediction")
+```
+
+```{r, echo=FALSE, warning=FALSE,results=FALSE}
+newnba2 <- data.frame(MIN=43.6, TS_PCT=64.4, USG_PCT=38.7)
+predict(nbamodfinal_bc, newnba2, level = .95, interval = "prediction")
+```
+
+\newpage
+
+## Appendix A: Data Dictionary
+
+| Variable Name | Abbreviated Name | Description |
+|:----------------------:|:----------------------:|:----------------------:|
+| Salary | SALARY | Player salary in millions of dollars |
+| Player Impact Estimate | PIE | Player's overall contribution to the game; expressed as a percentage |
+| True Shooting Percentage | TS_PCT | Measure player's efficiency at scoring (percentage) |
+| Minutes Played | MIN | Average minutes played per game |
+| Offensive Rating | OFFRTG | Estimates offensive efficiency by calculating points scored per 100 possessions |
+| Usage Percentage | USG_PCT | Estimates the percentage of a team's possessions a player uses while on the court (percentage of possessions) |
+| Net Rating Tier | NETRTG_TIER | Derived from quantitative variable (NETRTG); classifies players into three groups: low impact, average, or high impact |
+| Conference | CONFERENCE | Indicates whether a player is in the Eastern or Western conference |
+| Age Group | AGE_GROUP | Grouping of players into young, prime, veteran, or old based on age |
+
+\newpage
+
+## Appendix B: Data Rows
+
+```{r, echo=FALSE}
+# Use head() function to output first several rows
+head(nba_data)
+```
+
+\newpage
+
+### Appendix C: Exploratory Data Analysis
+
+```{r, echo=FALSE, warning=FALSE,include=FALSE}
+#quant x qual
+plot(x=nba_data$PIE, y=nba_data$SALARY,pch=as.numeric(factor(nba_data$AGE_GROUP)),xlab="Player Impact Estimate",ylab="Salary") 
+legend("topright",legend = levels(factor(nba_data$AGE_GROUP)),
+      pch = 1:nlevels(factor(nba_data$AGE_GROUP)))
+ for (g in levels(as.factor(nba_data$AGE_GROUP))) {
+ group_subset <- subset(nba_data, AGE_GROUP == g)
+  model <- lm(SALARY ~ PIE, data = group_subset)
+  abline(model, lwd = 2) 
+ }
+plot(nba_data$OFFRTG,nba_data$SALARY,xlab="Offensive Rating", ylab="Player Salary ",main = "Salary vs Offensive Rating")
+plot(nba_data$PIE, nba_data$SALARY,xlab="Player Impact Estimate",ylab="Player Salary", main = "Salary vs Player Impact Estimate")
+
+rcorr(as.matrix(nba_data[,c("MIN", "OFFRTG","TS_PCT", "USG_PCT", "PIE")]))
+
+# Multicollinearity VIF
+nbamod1<-lm(SALARY~MIN+OFFRTG+TS_PCT+USG_PCT + PIE,data=nba_data)
+nbamodvif<-round(vif(nbamod1),3)
+nbamodvif
+#find the average VIF
+mean(nbamodvif)
+```
+
+```{r, echo=FALSE}
+## Use this code  to include the relevant plots from EDA
+## This should NOT be a dump of all of your plots and outputs.
+## Refer to the Rmarkdown guide for sizing information on your plots
+par(mfrow = c(3, 3))
+
+#Histogram of Response
+options(scipen=10)
+hist(nba_data$SALARY, xlab="NBA Player Salary", main="Distribution of NBA Player Salaries") 
+
+#Quantitative
+plot(nba_data$TS_PCT, nba_data$SALARY,xlab="True Shooting %",ylab="Player Salary ", main = "Salary vs True Shooting %")
+plot(nba_data$MIN, nba_data$SALARY,xlab="Minutes Played/Game",ylab="Player Salary ",main = "Salary vs Minutes Played ")
+plot(nba_data$USG_PCT, nba_data$SALARY,xlab="Usage Percentage", ylab="Player Salary",main = "Salary vs Usage %")
+
+#Qualitative
+boxplot(SALARY~ NETRTG_TIER,nba_data, ylab="Player Salary", main = "Salary vs Net Rating Tier")
+boxplot(SALARY~CONFERENCE,nba_data, ylab="Player Salary", main = "Salary vs Conference")
+boxplot(SALARY~ AGE_GROUP,nba_data, ylab="Player Salary", main = "Salary vs Age Group")
+
+#Interactions
+# qual x qual 
+interaction.plot(nba_data$NETRTG_TIER, nba_data$AGE_GROUP, nba_data$SALARY,fun=mean,trace.label="Age Group", xlab="Impact Level",ylab="Salary")
+
+# quant x qual
+plot(x=nba_data$MIN, y=nba_data$SALARY,pch=as.numeric(factor(nba_data$NETRTG_TIER)),xlab="Minutes Played",ylab="Salary") 
+legend("topright",legend = levels(factor(nba_data$NETRTG_TIER)),
+       pch = 1:nlevels(factor(nba_data$NETRTG_TIER)))
+for (g in levels(as.factor(nba_data$NETRTG_TIER))) {
+  group_subset <- subset(nba_data, NETRTG_TIER == g)
+  model <- lm(SALARY ~ MIN, data = group_subset)
+  abline(model, lwd = 2)
+}
+
+# This partition is optional, but can be useful for a simple way to resize your plots
+par(mfrow=c(2,3),pin=c(1,1),mar=c(7.1,4.1,3,1))
+
+nbacor<-round(cor(nba_data[,c("MIN", "OFFRTG","TS_PCT", "USG_PCT", "PIE")]),4)
+corrplot(nbacor)
+
+```
+
+\newpage
+
+## Appendix D: Final Model Output and Plots
+
+```{r, echo=FALSE, warning=FALSE,results=FALSE}
+#stepwise
+ols_step_both_p(nbamod1,p_ent=0.15,p_rem=0.15,details=F)
+```
+
+```{r, echo=FALSE, warning=FALSE,include=FALSE}
+#model with quant variables only 
+nba_mod <- lm(SALARY~ MIN + TS_PCT + USG_PCT, data = nba_data)
+summary(nba_mod)
+
+test <- table(nba_data$AGE_GROUP, nba_data$NETRTG_TIER)
+test
+
+# fit model by adding in qualitative predictors + qual x qual interactions ( didn't add in netrtg_tier and age group because there weren't observations in each category)
+nba_data$AGE_GROUP <- as.factor(nba_data$AGE_GROUP)
+nba_data$CONFERENCE <-as.factor(nba_data$CONFERENCE)
+nba_data$NETRTG_TIER <- as.factor(nba_data$NETRTG_TIER)
+nba_mod <- lm(SALARY~ MIN + TS_PCT + USG_PCT + AGE_GROUP+CONFERENCE+NETRTG_TIER ,data = nba_data)
+summary(nba_mod)
+
+#reduced model 
+rednbamod<-lm(SALARY~MIN+TS_PCT+USG_PCT+ CONFERENCE + NETRTG_TIER,data=nba_data)
+summary(rednbamod)
+anova(rednbamod,nba_mod)
+
+#refit model after removing age group
+nbamod<-lm(SALARY~MIN+TS_PCT+USG_PCT+ CONFERENCE + NETRTG_TIER,data=nba_data)
+summary(nbamod)
+#reduced model 
+rednbamod2<-lm(SALARY~MIN+TS_PCT+USG_PCT+ CONFERENCE ,data=nba_data)
+summary(rednbamod2)
+anova(rednbamod2,nbamod)
+
+#refit model after removing net rating tier 
+nbamod<-lm(SALARY~MIN+TS_PCT+USG_PCT+ CONFERENCE,data=nba_data)
+summary(nbamod)
+
+#ending up removing conference for final model 
+```
+
+```{r, echo=FALSE, warning=FALSE,include=FALSE}
+## This code chunk can be used to execute any functions or summaries that will not be included in your output
+#testing if extreme observations had to be removed 
+nbaremovedfinal1 <- lm(SALARY ~ MIN + TS_PCT + USG_PCT, data = nba_data[-c(11), ])
+summary(nbaremovedfinal1)
+
+nbaremovedfinal2 <- lm(SALARY ~ MIN + TS_PCT + USG_PCT, data = nba_data[-c(37), ])
+summary(nbaremovedfinal2)
+
+nbaremovedfinal3 <- lm(SALARY ~ MIN + TS_PCT + USG_PCT, data = nba_data[-c(11,37), ])
+summary(nbaremovedfinal3)
+
+# final model - decided not to remove either of the observations
+nbamodfinal<-lm(SALARY~MIN+TS_PCT+USG_PCT,data=nba_data)
+summary(nbamodfinal)
+
+residualPlots(nbamodfinal,tests=F)
+plot(nbamodfinal, which=c(1,2))
+hist(residuals(nbamodfinal))
+
+
+## Leverage
+which(hatvalues(nbamodfinal)>8/78)
+#10 23 42 50
+
+## Studentized Residual
+which(abs(stdres(nbamodfinal))>2)
+# 7 11 18 24 37 39 44
+
+## Cooks Distance
+which(cooks.distance(nbamodfinal)>4/78)
+# 11 18 24 37 39 42
+
+## Deleted Studentized Residual
+which(abs(rstudent(nbamodfinal))>2)
+# 7 11 18 24 37 39 44
+
+#Multiple arguments
+which(hatvalues(nbamodfinal)>8/78&cooks.distance(nbamodfinal)>4/78&abs(rstudent(nbamodfinal))>2&abs(stdres(nbamodfinal))>2)
+# none
+
+#dffits
+nbafits<-dffits(nbamodfinal)
+nbafits[c("7", "11", "18", "24", "37", "39", "44")]
+summary(dffits(nbamodfinal))
+
+nbabetas<-dfbetas(nbamodfinal)
+nbabetas[c("7", "11", "18", "24", "37", "39", "44"),]
+summary(dfbetas(nbamodfinal))
+
+library (MASS)
+nbamodfinal<-lm(SALARY~MIN+TS_PCT+USG_PCT,data=nba_data)
+bc <- boxcox(nbamodfinal)
+bc.power <- bc$x[which.max(bc$y)]
+bc.power
+
+#functions
+BCTransform <- function(y, lambda=0) {
+    if (lambda == 0L) { log(y) }
+    else { (y^lambda - 1) / lambda }
+}
+
+BCTransformInverse <- function(yt, lambda=0) {
+    if (lambda == 0L) { exp(yt) }
+    else { exp(log(1 + lambda * yt)/lambda) }
+}
+# testing
+yt <- BCTransform(nba_data$SALARY, bc.power)
+yo <- BCTransformInverse(yt, bc.power)
+unique(round(yo - nba_data$SALARY), 8)
+
+yt <- BCTransform(nba_data$SALARY, 0)
+yo <- BCTransformInverse(yt, 0)
+unique(round(yo - nba_data$SALARY), 8)
+```
+
+```{r, echo=FALSE}
+#final model 
+nba_data$SALARY_bc <- BCTransform(nba_data$SALARY, bc.power)
+nbamodfinal_bc <- lm(SALARY_bc ~ MIN + TS_PCT + USG_PCT, data = nba_data)
+summary(nbamodfinal_bc)
+```
+
+```{r, echo=FALSE}
+## Use this section to output the summary of your final model
+## Include the relevant plots from assumptions and your additional techniques
+## This should NOT be a dump of all of your plots and outputs.
+## Refer to the Rmarkdown guide for sizing information on your plots
+
+
+par(mfrow=c(1,2))
+
+#Cooks Distance Thresholds
+plot(nbamodfinal,which=4)
+
+#Leverage vs Studentized Residuals
+influencePlot(nbamodfinal,fill=F)
+
+#Deleted Studentized Residals
+ols_plot_resid_stud_fit(nbamodfinal)
+
+
+
+par(mfrow=c(2,2))
+residualPlots(nbamodfinal_bc,tests=F)
+plot(nbamodfinal_bc, which=c(1,2))
+
+
+
+
+```
+
+\newpage
+
+## Appendix E: References
+
+### Background
+
+Li, N. (2014). The Determinants of the Salary in NBA and the Overpayment in the Year of Signing a New Contract. Clemson OPEN. <https://open.clemson.edu/all_theses/2037/>
+
+NBA. (2019, September 26). About The NBA. NBA.com. <https://www.nba.com/news/about>
+
+Sigler, K., & Compton, W. (2018, August 2). NBA Players’ Pay and Performance: What Counts? The Sport Journal. <https://thesportjournal.org/article/nba-players-pay-and-performance-what-counts/>
+
+Staff, NBA. com. (2025, June 30). NBA salary cap for 2025-26 season set at \$154.647 million. NBA; NBA.com. <https://www.nba.com/news/nba-salary-cap-set-2025-26-season>
+
+### Data Sources
+
+NBA Player Salaries - National Basketball Association - ESPN. (2024). ESPN.com. <https://www.espn.com/nba/salaries/_/year/2025/seasontype/3>
+
+Players Advanced \| Stats \| NBA.com. (2025). NBA. <https://www.nba.com/stats/players/advanced?sort=W&dir=-1&Season=2023-24&SeasonType=Regular+Season>
+
+### Additional Help
+
+Box-cox transformation. (n.d.). Www.css.cornell.edu. <https://www.css.cornell.edu/faculty/dgr2/_static/files/R_html/Transformations.html>
